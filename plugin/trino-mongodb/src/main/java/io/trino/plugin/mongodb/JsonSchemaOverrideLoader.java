@@ -20,9 +20,7 @@ import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeManager;
 import org.bson.Document;
 
-import java.io.FileReader;
 import java.io.IOException;
-import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -60,8 +58,8 @@ public class JsonSchemaOverrideLoader
     private Map<SchemaTableName, Document> loadSchemaOverride(Path jsonSchemaFile)
             throws IOException
     {
-        try (Reader reader = new FileReader(jsonSchemaFile.toFile())) {
-            Document root = Document.parse(reader.readAllBytes());
+        String content = Files.readString(jsonSchemaFile);
+        Document root = Document.parse(content);
 
             ImmutableMap.Builder<SchemaTableName, Document> builder = ImmutableMap.builder();
             for (String schemaName : root.keySet()) {
