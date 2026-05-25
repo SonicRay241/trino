@@ -181,6 +181,7 @@ public class MongoSession
 
     private final Cache<SchemaTableName, MongoTable> tableCache;
     private final String implicitPrefix;
+    private final JsonSchemaOverrideLoader jsonSchemaOverrideLoader;
 
     public MongoSession(TypeManager typeManager, Supplier<MongoClient> client, MongoClientConfig config)
     {
@@ -194,6 +195,17 @@ public class MongoSession
         this.tableCache = EvictableCacheBuilder.newBuilder()
                 .expireAfterWrite(1, MINUTES)  // TODO: Configure
                 .build();
+
+        this.jsonSchemaOverrideLoader = config.getJsonSchemaOverride()
+                .map(path -> {
+                    try {
+                        return new JsonSchemaOverrideLoader(java.nio.file.Path.of(path), typeManager);
+                    }
+                    catch (IOException e) {
+                        throw new RuntimeException("Failed to load JSON schema override file: " + path, e);
+                    }
+                })
+                .orElse(null);
     }
 
     @Override
@@ -212,10 +224,17 @@ public class MongoSession
 
     public List<String> getAllSchemas()
     {
-        return Streams.stream(listDatabaseNames())
+        ImmutableList.Builder<String> schemas = ImmutableList.builder();
+        schemas.addAll(Streams.stream(listDatabaseNames())
                 .filter(schema -> !SYSTEM_DATABASES.contains(schema))
                 .map(schema -> schema.toLowerCase(ENGLISH))
-                .collect(toImmutableList());
+                .collect(toImmutableList()));
+
+        if (jsonSchemaOverrideLoader != null) {
+            schemas.addAll(jsonSchemaOverrideLoader.getSchemaNames());
+        }
+
+        return schemas.build().stream().distinct().collect(toImmutableList());
     }
 
     public void createSchema(String schemaName)
@@ -251,6 +270,13 @@ public class MongoSession
                 .filter(name -> !SYSTEM_TABLES.contains(name))
                 .collect(toSet()));
         builder.addAll(getTableMetadataNames(schemaName));
+
+        if (jsonSchemaOverrideLoader != null) {
+            builder.addAll(jsonSchemaOverrideLoader.getTableNames().stream()
+                    .filter(t -> t.getSchemaName().equalsIgnoreCase(schema))
+                    .map(t -> t.getTableName().toLowerCase(ENGLISH))
+                    .collect(toImmutableSet()));
+        }
 
         return builder.build().stream()
                 .map(name -> name.toLowerCase(ENGLISH))
@@ -457,6 +483,10 @@ public class MongoSession
     private MongoTable loadTableSchema(SchemaTableName schemaTableName)
             throws TableNotFoundException
     {
+        if (jsonSchemaOverrideLoader != null && jsonSchemaOverrideLoader.hasSchemaOverride(schemaTableName)) {
+            return loadTableSchemaFromJson(schemaTableName);
+        }
+
         RemoteTableName remoteSchemaTableName = toRemoteSchemaTableName(schemaTableName);
         String remoteSchemaName = remoteSchemaTableName.databaseName();
         String remoteTableName = remoteSchemaTableName.collectionName();
@@ -472,6 +502,16 @@ public class MongoSession
 
         MongoTableHandle tableHandle = new MongoTableHandle(schemaTableName, remoteSchemaTableName, Optional.empty());
         return new MongoTable(tableHandle, columnHandles.build(), getIndexes(remoteSchemaName, remoteTableName), getComment(tableMeta));
+    }
+
+    private MongoTable loadTableSchemaFromJson(SchemaTableName schemaTableName)
+    {
+        List<MongoColumnHandle> columns = jsonSchemaOverrideLoader.getColumnHandles(schemaTableName, typeManager);
+        Document tableDoc = jsonSchemaOverrideLoader.getTableSchema(schemaTableName).orElse(new Document());
+        Optional<String> comment = Optional.ofNullable(tableDoc.getString(COMMENT_KEY));
+
+        MongoTableHandle tableHandle = new MongoTableHandle(schemaTableName, toRemoteSchemaTableName(schemaTableName), Optional.empty());
+        return new MongoTable(tableHandle, columns, ImmutableList.of(), comment);
     }
 
     private MongoColumnHandle buildColumnHandle(Document columnMeta)

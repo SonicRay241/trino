@@ -25,6 +25,8 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
+import java.util.Optional;
+
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 @DefunctConfig({"mongodb.connection-per-host", "mongodb.socket-keep-alive", "mongodb.seeds", "mongodb.credentials"})
@@ -285,6 +287,21 @@ public class MongoClientConfig
     public MongoClientConfig setDynamicFilteringWaitTimeout(Duration dynamicFilteringWaitTimeout)
     {
         this.dynamicFilteringWaitTimeout = dynamicFilteringWaitTimeout;
+        return this;
+    }
+
+    private String jsonSchemaOverride;
+
+    public Optional<String> getJsonSchemaOverride()
+    {
+        return Optional.ofNullable(jsonSchemaOverride);
+    }
+
+    @Config("mongodb.json-schema-override")
+    @ConfigDescription("Path to a JSON file containing table schema definitions")
+    public MongoClientConfig setJsonSchemaOverride(String jsonSchemaOverride)
+    {
+        this.jsonSchemaOverride = jsonSchemaOverride;
         return this;
     }
 }
