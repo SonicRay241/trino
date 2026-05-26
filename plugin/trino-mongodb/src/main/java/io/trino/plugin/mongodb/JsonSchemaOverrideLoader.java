@@ -61,26 +61,25 @@ public class JsonSchemaOverrideLoader
         String content = Files.readString(jsonSchemaFile);
         Document root = Document.parse(content);
 
-            ImmutableMap.Builder<SchemaTableName, Document> builder = ImmutableMap.builder();
-            for (String schemaName : root.keySet()) {
-                Object schemaValue = root.get(schemaName);
-                if (!(schemaValue instanceof Document schemaDoc)) {
+        ImmutableMap.Builder<SchemaTableName, Document> builder = ImmutableMap.builder();
+        for (String schemaName : root.keySet()) {
+            Object schemaValue = root.get(schemaName);
+            if (!(schemaValue instanceof Document schemaDoc)) {
+                continue;
+            }
+
+            for (String tableName : schemaDoc.keySet()) {
+                Object tableValue = schemaDoc.get(tableName);
+                if (!(tableValue instanceof Document tableDoc)) {
                     continue;
                 }
 
-                for (String tableName : schemaDoc.keySet()) {
-                    Object tableValue = schemaDoc.get(tableName);
-                    if (!(tableValue instanceof Document tableDoc)) {
-                        continue;
-                    }
-
-                    SchemaTableName fullTableName = new SchemaTableName(schemaName.toLowerCase(Locale.ENGLISH), tableName.toLowerCase(Locale.ENGLISH));
-                    builder.put(fullTableName, tableDoc);
-                }
+                SchemaTableName fullTableName = new SchemaTableName(schemaName.toLowerCase(Locale.ENGLISH), tableName.toLowerCase(Locale.ENGLISH));
+                builder.put(fullTableName, tableDoc);
             }
-
-            return builder.buildOrThrow();
         }
+
+        return builder.buildOrThrow();
     }
 
     public boolean hasSchemaOverride(SchemaTableName tableName)
